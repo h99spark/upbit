@@ -10,7 +10,7 @@ secret = "Ig674PmtvONPAqy7GLxVWVUe9Um4OR7rxmTNgVg9"
 upbit = pyupbit.Upbit(access, secret)
 
 # 거래대금 상위 30개만 뽑기
-def transcation_top():
+def transaction_top():
     coin_array = []
     url = "https://www.coingecko.com/ko/거래소/upbit"
     resp = requests.get(url)
@@ -55,21 +55,10 @@ def buy_decision(coin, high, avg_volume):
     # else:
     #     print("조건 불만족   ///    현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
 
-
-with open("C:/Users/User/PycharmProjects/pythonProject/top30.txt", 'w') as f:
-    while True:
-        f.write(str(time.strftime('%m-%d %H:%M:%S')))
-        f.write('\n')
-        f.writelines(transcation_top())
-        f.write("\n")
-        time.sleep(10)
-
-        #print("현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
-        #print(transcation_top())
-        #print()
-        #f.write("현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
-        #f.write(transcation_top())
-        #f.write()
+while True:
+    print(str(time.strftime('%m-%d %H:%M:%S')))
+    print(transaction_top())
+    time.sleep(60)
 
 
 # while True:
