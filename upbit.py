@@ -25,7 +25,7 @@ def transaction_top():
         coin = "KRW-" + ticker.split('/')[0]
         coin_array.append(coin)
 
-    return coin_array
+    return coin_array[:30]
 
 
 def price_range(coin):
@@ -50,21 +50,16 @@ def buy_decision(coin, high, avg_volume):
     df = pyupbit.get_ohlcv(coin, interval="minute1", count=1)
     current_volume = df.iloc[0]['volume']
 
-    if current_volume > avg_volume * 5:
+    if current_volume > avg_volume * 7:
         current_price = pyupbit.get_current_price(coin)
         print(str(time.strftime('%m-%d %H:%M:%S')), "///   coin name: ", coin, "   ///   current price: ", current_price)
 
-    # else:
-    #     print("조건 불만족   ///    현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
 
 
 coin_array = transaction_top()
+print(coin_array, "\n", "\n")
 
 while True:
     for coin in coin_array:
         high, low, avg_volume = price_range(coin)
         buy_decision(coin, high, avg_volume)
-
-# print(str(time.strftime('%m-%d %H:%M:%S')))
-# print(transaction_top())
-# time.sleep(60)
