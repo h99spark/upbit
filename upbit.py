@@ -9,6 +9,7 @@ secret = "Ig674PmtvONPAqy7GLxVWVUe9Um4OR7rxmTNgVg9"
 
 upbit = pyupbit.Upbit(access, secret)
 
+
 # 거래대금 상위 30개만 뽑기
 def transaction_top():
     coin_array = []
@@ -26,12 +27,13 @@ def transaction_top():
 
     return coin_array
 
+
 def price_range(coin):
     data_count = 5
     high_low_list = []
     volume_list = []
 
-    df = pyupbit.get_ohlcv(coin, interval = "minute1", count = data_count + 1)
+    df = pyupbit.get_ohlcv(coin, interval="minute1", count=data_count + 1)
 
     for i in range(data_count):
         high_low_list.append(df.iloc[i]['high'])
@@ -40,32 +42,33 @@ def price_range(coin):
 
     return max(high_low_list), min(high_low_list), sum(volume_list) / data_count
 
-#거래량은 직전 5분동안의 평균의 7배 이상
-#강한 양봉 / 전 고가보다 일정 %이상 상승해야
+
+# 거래량은 직전 5분동안의 평균의 7배 이상
+# 강한 양봉 / 전 고가보다 일정 %이상 상승해야
 
 def buy_decision(coin, high, avg_volume):
     current_price = pyupbit.get_current_price(coin)
-    df = pyupbit.get_ohlcv(coin, interval = "minute1", count = 1)
+    df = pyupbit.get_ohlcv(coin, interval="minute1", count=1)
     current_volume = df.iloc[0]['volume']
 
-    print("현재 가격: ", current_price, "    ///    현재 거래량: ", current_volume)
+    # print("현재 가격: ", current_price, "    ///    현재 거래량: ", current_volume)
 
-    if(current_price > high and current_volume > avg_volume):
+    if current_volume > avg_volume * 5:
+        print(str(time.strftime('%m-%d %H:%M:%S')))
         print("구매 코인: ", coin)
+        print("현재 가격: ", current_price)
+        print()
     # else:
     #     print("조건 불만족   ///    현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
 
+
+coin_array = transaction_top()
+
 while True:
-    print(str(time.strftime('%m-%d %H:%M:%S')))
-    print(transaction_top())
-    time.sleep(60)
+    for coin in coin_array:
+        high, low, volume = price_range(coin)
+        buy_decision(coin, high, volume)
 
-
-# while True:
-#     print("현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
-#     high, low, volume = price_range("KRW-OMG")
-#     print("고가: ", high, "  ///  저가: ", low, "  ///  평균 거래량: ", volume)
-#     buy_decision("KRW-OMG", high, volume)
-#     time.sleep(2)
-#     print()
-
+# print(str(time.strftime('%m-%d %H:%M:%S')))
+# print(transaction_top())
+# time.sleep(60)
