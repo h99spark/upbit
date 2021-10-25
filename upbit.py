@@ -47,17 +47,13 @@ def price_range(coin):
 # 강한 양봉 / 전 고가보다 일정 %이상 상승해야
 
 def buy_decision(coin, high, avg_volume):
-    current_price = pyupbit.get_current_price(coin)
     df = pyupbit.get_ohlcv(coin, interval="minute1", count=1)
     current_volume = df.iloc[0]['volume']
 
-    # print("현재 가격: ", current_price, "    ///    현재 거래량: ", current_volume)
-
     if current_volume > avg_volume * 5:
-        print(str(time.strftime('%m-%d %H:%M:%S')))
-        print("구매 코인: ", coin)
-        print("현재 가격: ", current_price)
-        print()
+        current_price = pyupbit.get_current_price(coin)
+        print(str(time.strftime('%m-%d %H:%M:%S')), "///   coin name: ", coin, "   ///   current price: ", current_price)
+
     # else:
     #     print("조건 불만족   ///    현재 시각: ", time.strftime('%m-%d %H:%M:%S'))
 
@@ -66,8 +62,8 @@ coin_array = transaction_top()
 
 while True:
     for coin in coin_array:
-        high, low, volume = price_range(coin)
-        buy_decision(coin, high, volume)
+        high, low, avg_volume = price_range(coin)
+        buy_decision(coin, high, avg_volume)
 
 # print(str(time.strftime('%m-%d %H:%M:%S')))
 # print(transaction_top())
