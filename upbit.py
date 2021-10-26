@@ -28,32 +28,30 @@ def transaction_top():
     return coin_array[:30]
 
 
-def price_range(coin):
+# 직전 5분동안의 거래량 평균 계산
+def compute_avg_volume(coin):
     data_count = 5
-    high_low_list = []
     volume_list = []
 
     df = pyupbit.get_ohlcv(coin, interval="minute1", count=data_count + 1)
 
     for i in range(data_count):
-        high_low_list.append(df.iloc[i]['high'])
-        high_low_list.append(df.iloc[i]['low'])
         volume_list.append(df.iloc[i]['volume'])
 
-    return max(high_low_list), min(high_low_list), sum(volume_list) / data_count
+    return sum(volume_list) / data_count
 
 
 # 거래량은 직전 5분동안의 평균의 7배 이상
 # 강한 양봉 / 전 고가보다 일정 %이상 상승해야
-
-def buy_decision(coin, high, avg_volume):
+def buy_decision(coin, avg_volume):
     df = pyupbit.get_ohlcv(coin, interval="minute1", count=1)
+    start_price = df.iloc[0]['open']
     current_volume = df.iloc[0]['volume']
+    current_price = pyupbit.get_current_price(coin)
 
     if current_volume > avg_volume * 7:
-        current_price = pyupbit.get_current_price(coin)
-        print(str(time.strftime('%m-%d %H:%M:%S')), "///   coin name: ", coin, "   ///   current price: ", current_price)
-
+        print(str(time.strftime('%m-%d %H:%M:%S')), "///   coin name: ", coin, "   ///   current price: ",
+              current_price, "    ///   ratio: ", current_price / start_price)
 
 
 coin_array = transaction_top()
@@ -61,5 +59,8 @@ print(coin_array, "\n", "\n")
 
 while True:
     for coin in coin_array:
-        high, low, avg_volume = price_range(coin)
-        buy_decision(coin, high, avg_volume)
+        avg_volume = compute_avg_volume(coin)
+        buy_decision(coin, avg_volume)
+
+
+
