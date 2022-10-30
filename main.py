@@ -1,260 +1,104 @@
+import win32com.client
 import pandas as pd
+import time
 
-class ThreeExtension:
+class GetData:
 
-    def __init__(self, file_name, name, code, start_date, start_price, standard_date):
+    def __init__(self):
+        self.obj = win32com.client.Dispatch("CpSysDib.StockChart")
+        self.obj2 = win32com.client.Dispatch("CpUtil.CpCybos")
 
-        self.point_bought = [False, False, False] # 5타점 샀는지 여부, 6타점 샀는지 여부, 7타점 샀는지 여부
-        self.points = [0, 0, 0, 0, 0] # 4타점, 5타점, 6타점, 7타점, 8타점
+        self.all_stocks = {}
 
-        self.name = name
-        self.code = code
+        self.row = []
+        self.header = ['날짜', '시간', '시가', '고가', '저가', '종가']
+        self.df = None
 
-        self.is_bought = False # 샀는지 여부
-        self.is_sold = False # 팔았는지 여부
-
-        self.is_finish = False
-
-        self.file_name = file_name
-        self.dates = [] # 날짜 모음
-        self.info = {} # 분봉 데이터 모음(시각, 시가, 고가, 저가, 종가)
-
-        self.start_date = start_date # 피보나치 시작 날짜
-        self.highest_date = standard_date # 피보나치 최고 날짜
-        self.standard_date = standard_date # 상한가 날짜
-        self.start_price = start_price # 피보나치 시작 가격
-        self.highest_price = start_price # 피보나치 최고 가격
-
-        self.buy_price = 0.0
-        self.sell_price = 0.0
-
-        # 0: 후보, 1: 상한가 알파, 2: 3시확
-        self.status = 0 if self.start_date == self.highest_date else 1
-
-        print("")
-        print(file_name, start_date, start_price, date)
-
-    # csv 파일 불러와서 데이터를 딕셔너리에 저장
-    def set_data(self):
-        data_type = {"날짜": 'str', '시간': 'str', '시가': 'int', '고가': 'int', '저가': 'int', '종가': 'int'}
-        df = pd.read_csv(self.file_name, encoding='utf-8', dtype=data_type)
-        self.dates = sorted(list(set(df['날짜'])))
+    # 파일 읽어서 모든 종목명, 종목코드 가져와서 저장
+    def read_file(self, file_name):
+        data_type = {"날짜": 'str', '종목명': 'str', '종목코드': 'str'}
+        df = pd.read_csv(file_name, encoding='utf-8', dtype=data_type)
 
         for i in range(len(df)):
-            row = df.iloc[i]
-            date, time = row['날짜'].replace('/', ''), row['시간']
-            open, high, low, close = row['시가'], row['고가'], row['저가'], row['종가']
+            name, code = df.iloc[i]['종목명'], 'A' + df.iloc[i]['종목코드'].zfill(6)
+            if name not in self.all_stocks:
+                self.all_stocks[name] = code
 
-            if date not in self.info:
-                self.info[date] = [(time, open, high, low, close)]
-            else:
-                self.info[date].append((time, open, high, low, close))
+        print(f"총 종목 수: {len(self.all_stocks)}")
 
-        for key in self.info.keys():
-            self.info[key].sort(key=lambda x: x[0])
+    # 1초당 요청 개수 제한 걸리지 않게 쉬었다 가기
+    def request_refill(self):
+        remain_request_count = self.obj2.GetLimitRemainCount(1)
+        if remain_request_count == 0:
+            print('남은 요청이 모두 소진되었습니다. 잠시 대기합니다.')
 
-    # 타점 업데이트
-    def update_points(self):
-        self.points[0] = self.start_price + (self.highest_price - self.start_price) * 0.6
-        self.points[1] = self.start_price + (self.highest_price - self.start_price) * 0.5
-        self.points[2] = self.start_price + (self.highest_price - self.start_price) * 0.4
-        self.points[3] = self.start_price + (self.highest_price - self.start_price) * 0.3
-        self.points[4] = self.start_price + (self.highest_price - self.start_price) * 0.2
+            while True:
+                time.sleep(1)
+                remain_request_count = self.obj2.GetLimitRemainCount(1)
+                if remain_request_count > 0:
+                    print(f'작업을 재개합니다. (남은 요청 : {remain_request_count}')
+                    return
 
-    # 상한가 단 날 피보나치 초기화하기
-    def init_fibo(self):
-        self.highest_price = self.info[self.standard_date][-1][2]
-        self.update_points()
+    # 종목코드로 분봉 가져와서 dataframe에 저장
+    def get_ohlc(self, code, minute, num):
 
-    # 상한가 다음 날부터 하루씩 검사
-    def traverse_dates(self):
-        standard_idx = self.dates.index(self.standard_date)
-        for date_idx in range(standard_idx + 1, len(self.dates)):
-            self.traverse_daily(self.dates[date_idx])
-            if self.is_finish:
-                return
+        self.obj.SetInputValue(0, code) # 종목코드
+        self.obj.SetInputValue(1, ord('2')) # 1: 기간, 2: 개수로 받기
+        # obj.objStockChart.SetInputValue(2, toDate)  # To 날짜
+        # obj.objStockChart.SetInputValue(3, fromDate)  # From 날짜
+        self.obj.SetInputValue(4, num)  # 요청개수
+        self.obj.SetInputValue(5, [0, 1, 2, 3, 4, 5])  # 0: 날짜, 1: 시간, 2~5: ohlc
+        self.obj.SetInputValue(6, ord('m')) # 분봉 차트
+        self.obj.SetInputValue(7, minute)  # 5분 간격
+        self.obj.SetInputValue(9, ord('1'))  # 1: 수정주가
 
-    # 하루치 분봉들 검사
-    def traverse_daily(self, date):
+        totlen = 0
+        row = []
+        while True:
 
-        self.examine_rotten(date)
+            self.obj.BlockRequest()
+            rqStatus = self.obj.GetDibStatus()
+            rqRet = self.obj.GetDibMsg1()
+            if rqStatus != 0:
+                print("통신상태", rqStatus, rqRet)
+                exit()
 
-        self.after_look(date)
+            cnt = self.obj.GetHeaderValue(3)
+            totlen += cnt
+            for i in range(cnt):
+                date = self.obj.GetDataValue(0, i)
+                time = str(self.obj.GetDataValue(1, i)).zfill(4)
+                time = time[:2] + ':' + time[2:]
+                open = self.obj.GetDataValue(2, i)
+                high = self.obj.GetDataValue(3, i)
+                low = self.obj.GetDataValue(4, i)
+                close = self.obj.GetDataValue(5, i)
+                row.append([date, time, open, high, low, close])
 
-        if self.is_finish:
-            return
+            if not self.obj.Continue:
+                break
+            if totlen > num:
+                break
 
-        for time, open, high, low, close in self.info[date]:
+        row.sort(key = lambda x: (x[0], x[1]))
+        self.df = pd.DataFrame(row, columns=self.header)
 
-            self.extend_fibo(date, high)
-
-            buy_candle = self.buy_decision(low, date, time)
-
-            if not buy_candle:
-                self.sell_decision(low, high, date, time)
-                flag = False
-
-    # 고점 갱신하면 피보나치 확장. 추가로 후보면 상한가 알파 승격, 상한가 알파면 3시확 승격
-    def extend_fibo(self, date, high):
-        highest_idx = self.dates.index(self.highest_date)
-        cur_idx = self.dates.index(date)
-
-        if high > self.highest_price:
-            self.highest_date, self.highest_price = date, high
-            self.update_points()
-
-            if self.status == 0:
-                self.status = 1
-                print(f'{date}: 상한가 알파 달성')
-            elif self.status == 1 and highest_idx != cur_idx:
-                self.status = 2
-                print(f'{date}: 3시확 달성')
-
-    # 5일 이상 자리 안오면 종료(상한가 알파) or 3주 이상 자리 안오면 종료(3시확)
-    def examine_rotten(self, date):
-        highest_idx = self.dates.index(self.highest_date)
-        cur_idx = self.dates.index(date)
-
-        if not self.is_bought and not self.is_sold:
-            if self.status == 1 and highest_idx + 5 <= cur_idx:
-                print(f'5일째 자리 안 옴({date})')
-                self.is_finish = True
-            elif self.status == 2 and highest_idx + 15 <= cur_idx:
-                print(f'3주째 자리 안 옴({date})')
-                self.is_finish = True
-
-    # 매도 후 고점 5일 후 지나면 종료
-    # TODO: 매도 후 고점 5일 이내에 고점 갱신하면 3시확으로 후시세 감시
-    def after_look(self, date):
-        highest_idx = self.dates.index(self.highest_date)
-        cur_idx = self.dates.index(date)
-
-        if self.is_sold and highest_idx + 5 <= cur_idx:
-            print(f'후시세 감시 종료({date})')
-            self.is_finish = True
-
-    # 매수 결정
-    # TODO: 정확한 매수 가격(호가 반영)
-    def buy_decision(self, low, date, time):
-        flag = False
-
-        if self.status in (1, 2):
-            # 5타점 매수
-            if self.point_bought == [False, False, False] and not self.is_bought and low <= self.points[1]:
-                self.point_bought[0] = True
-                self.is_bought = True
-                self.buy_price = self.points[1]
-                print(f'{date} {time} - 5타점 매수(평단: {self.buy_price})')
-                flag = True
-
-            # 6타점 매수
-            if self.point_bought == [True, False, False] and self.is_bought and low <= self.points[2]:
-                self.point_bought[1] = True
-                self.buy_price = (self.points[1] + self.points[2]) / 2
-                print(f'{date} {time} - 6타점 매수(평단: {self.buy_price})')
-                flag = True
-
-            # 7타점 매수
-            if self.point_bought == [True, True, False] and self.is_bought and low <= self.points[3]:
-                self.point_bought[2] = True
-                self.buy_price = self.points[2]
-                print(f'{date} {time} - 7타점 매수(평단: {self.buy_price})')
-                flag = True
-
-        return flag
-
-        # if self.status == 2 and self.point_bought == [False, False, False] and not self.is_bought and low <= self.points[1]:
-        #     self.point_bought[0] = True
-        #     self.is_bought = True
-        #     self.buy_price = self.points[1]
-        #     print(f'{date} {time} - 5타점 매수(평단: {self.buy_price})')
-        #     return True
-
-        # elif self.status == 2 and self.point_bought == [True, False, False] and self.is_bought and low <= self.points[2]:
-        #     self.point_bought[1] = True
-        #     self.is_bought = True
-        #     self.buy_price = (self.points[1] + self.points[2]) / 2
-        #     print(f'{date} {time} - 6타점 매수(평단: {self.buy_price})')
-        #     return True
-
-        # elif self.status == 2 and self.point_bought == [True, True, False] and self.is_bought and low <= self.points[3]:
-        #     self.point_bought[2] = True
-        #     self.is_bought = True
-        #     self.buy_price = self.points[2]
-        #     print(f'{date} {time} - 7타점 매수(평단: {self.buy_price})')
-        #     return True
-
-        # elif self.status == 1 and self.point_bought == [False, False, False] and not self.is_bought and low <= self.points[1]:
-        #     self.point_bought[0] = True
-        #     self.is_bought = True
-        #     self.buy_price = self.points[1]
-        #     print(f'{date} {time} - 5타점 매수(평단: {self.buy_price})')
-        #     return True
-
-        # elif self.status == 1 and self.point_bought == [True, False, False] and self.is_bought and low <= self.points[2]:
-        #     self.point_bought[1] = True
-        #     self.is_bought = True
-        #     self.buy_price = (self.points[1] + self.points[2]) / 2
-        #     print(f'{date} {time} - 6타점 매수(평단: {self.buy_price})')
-        #     return True
-
-        # elif self.status == 1 and self.point_bought == [True, True, False] and self.is_bought and low <= self.points[3]:
-        #     self.point_bought[2] = True
-        #     self.is_bought = True
-        #     self.buy_price = self.points[2]
-        #     print(f'{date} {time} - 7타점 매수(평단: {self.buy_price})')
-        #     return True
-
-        # return False
-
-    # 매도 결정
-    # TODO: 정확한 매도 가격(호가 반영)
-    def sell_decision(self, low, high, date, time):
-
-        # 5타점 매수 후 4타점 매도
-        if self.point_bought == [True, False, False] and not self.is_sold and self.points[0] <= high:
-            self.is_bought = False
-            self.is_sold = True
-            self.sell_price = self.points[0]
-            print(f'{date} {time} - 4타점 매도(이익) (매도단가: {self.sell_price})')
-            print(f'수익률: {(self.sell_price - self.buy_price) * 100/ self.buy_price:.2f}%')
-
-        # 5, 6타점 매수 후 4.5타점 매도
-        elif self.point_bought == [True, True, False] and not self.is_sold and (self.points[0] + self.points[1]) / 2 <= high:
-            self.is_bought = False
-            self.is_sold = True
-            self.sell_price = (self.points[0] + self.points[1]) / 2
-            print(f'{date} {time} - 4.5타점 매도(이익) (매도단가: {self.sell_price})')
-            print(f'수익률: {(self.sell_price - self.buy_price) * 100/ self.buy_price:.2f}%')
-
-        # 5, 6, 7타점 매수 후 6타점 매도
-        elif self.point_bought == [True, True, True] and not self.is_sold and self.points[2] <= high:
-            self.is_bought = False
-            self.is_sold = True
-            self.sell_price = self.points[2]
-            print(f'{date} {time} - 6타점 매도(본전) (매도단가: {self.sell_price})')
-            print(f'수익률: {(self.sell_price - self.buy_price) * 100/ self.buy_price:.2f}%')
-
-        # 5, 6, 7타점 매수 후 8타점 매도
-        elif self.point_bought == [True, True, True] and not self.is_sold and low <= self.points[4]:
-            self.is_bought = False
-            self.is_sold = True
-            self.sell_price = self.points[4]
-            print(f'{date} {time} - 8타점 매도(손해) (매도단가: {self.sell_price})')
-            print(f'수익률: {(self.sell_price - self.buy_price) * 100/ self.buy_price:.2f}%')
+    # dataframe을 csv 파일에 저장
+    def write_csvfile(self, name):
+        print(f'파일 쓰는 중: ./분봉/{name}.csv 크기: {self.len(df)}')
+        self.df.to_csv(f"./분봉/{name}.csv", mode='w', index=None, encoding='utf-8-sig')
 
 
 if __name__ == '__main__':
+    cb = GetData()
 
-    data_type = {"날짜": 'str', '종목명': 'str', '종목코드': 'str', '시작날짜': 'str', '시작가격': 'int'}
-    df = pd.read_csv('C:\\Users\\박성훈\\Desktop\\상한가 종목(22년 하반기).csv', encoding='utf-8', dtype=data_type)
-    for i in range(len(df)):
-        date = df.iloc[i]['날짜']
-        name, code = df.iloc[i]['종목명'], df.iloc[i]['종목코드']
-        start_date, start_price = df.iloc[i]['시작날짜'], df.iloc[i]['시작가격']
-        file_name = f'./분봉\\{name}.csv'
+    cb.read_file('C:\\Users\\박성훈\\Desktop\\상한가 종목(22년하).csv')
 
-        te = ThreeExtension(file_name, name, code, start_date, start_price, date)
-        te.set_data()
-        te.init_fibo()
-        te.traverse_dates()
+    for name, code in cb.all_stocks.items():
+
+        cb.request_refill()
+
+        # 종목코드, 몇분봉, 몇개나
+        cb.get_ohlc(code, 5, 30000)
+
+        cb.write_csvfile(name)
